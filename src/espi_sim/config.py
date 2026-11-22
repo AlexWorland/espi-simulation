@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .laser import Laser
+from .waveforms import TriangleWave, VideoTiming
 
 OBSERVATION = np.array([0.0, 0.0, 1.0])
 
@@ -182,3 +183,7 @@ class SimConfig:
     margin_px: int | None = None
     """Border (camera pixels) simulated beyond the field of view and then cropped, to
     suppress FFT wrap-around. ``None`` means about 4 speckle sizes."""
+    reference_drive: TriangleWave | None = None
+    """Slow reference-piezo waveform used by video acquisition. ``None`` holds the phase at 0."""
+    timing: VideoTiming = field(default_factory=VideoTiming)
+    """Frame rate and exposure for video acquisition."""

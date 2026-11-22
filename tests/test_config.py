@@ -55,3 +55,11 @@ def test_phase_shifter_nominal_and_miscalibrated_steps():
 def test_pzt_displacement_for_quarter_wave_step():
     # A pi/2 step in reflection is a lambda/8 mirror move: 79.1 nm for HeNe.
     assert PhaseShifter.mirror_displacement(np.pi / 2, LAM) == pytest.approx(79.1e-9, rel=1e-3)
+
+
+def test_simconfig_video_defaults():
+    from espi_sim.config import SimConfig
+    from espi_sim.waveforms import VideoTiming
+
+    assert SimConfig().reference_drive is None
+    assert SimConfig().timing == VideoTiming(30.0, 0.03)
