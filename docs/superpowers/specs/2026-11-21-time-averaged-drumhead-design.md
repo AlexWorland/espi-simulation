@@ -47,8 +47,8 @@ can be developed and scored.
 
    Each frame uses the tone at its mid-exposure. Vibration states are cached by
    `(frequency, level)`, so constant and stepped segments cost one state computation each.
-   A continuous sweep costs one state per frame (about `N_t + 1` FFTs, about 0.25 s per
-   512² frame on an M5 Max).
+   A continuous sweep costs one state per frame (about `N_t + 1` FFTs; measured about 0.6 s per
+   512² frame on an M5 Max, so a 900-frame sweep takes about 9 minutes).
 
    Steady state is assumed. Ring-up transients are not modelled, and a `UserWarning` fires
    when the sweep rate exceeds `0.25·(f/Q)/τ` with `τ = Q/(πf)`. For the defaults that is

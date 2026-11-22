@@ -57,6 +57,8 @@ amplitudes of 121 nm, 278 nm, ….
 ![Simulated drumhead modes](docs/images/drumhead_modes.png)
 
 ```python
+import numpy as np
+
 drum = espi_sim.Drumhead(radius=0.1, f01=400, q=50)          # ideal clamped membrane
 level = drum.calibrate(0.5e-6, at_hz=400)                      # fixed drive strength
 cfg = espi_sim.SimConfig(
@@ -66,14 +68,14 @@ cfg = espi_sim.SimConfig(
     timing=espi_sim.VideoTiming(frame_rate_hz=30, exposure_s=0.03),
 )
 video = espi_sim.Simulator(cfg).acquire_video(
-    drum, espi_sim.Sweep(300, 1000, duration_s=30, level=level, spacing="log"), n_frames=900
+    drum, espi_sim.Sweep(350, 1000, duration_s=30, level=level, spacing="log"), n_frames=900
 )
 # video.frames, video.reference_phase (per frame), video.states[i].amplitude / .modulation (truth)
 ```
 
 Time averaging uses cycle-averaged fields. The mean field is the image of `U·J0(S·|W|)`,
 exact by Jacobi–Anger. The mean intensity averages over vibration phases, which keeps the
-speckle smearing from the membrane's slope. Both are cached per distinct tone. The model
+speckle smearing from the membrane's slope. Both are cached per distinct tone. A stepped sweep costs one state per step; a continuous sweep costs one per frame (about 0.6 s at 512², so the 900-frame sweep above takes about 9 minutes). The model
 assumes steady state and many cycles per exposure, and warns when a sweep is too fast or an
 exposure too short. Run `uv run python examples/drumhead_sweep.py` to regenerate the figure.
 
