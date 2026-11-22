@@ -24,6 +24,12 @@ def integrate_pixels(
     ``intensity`` is in electrons per pixel area for a 100 % fill factor, so a uniform
     intensity ``I`` yields ``fill_factor * I``.
     """
+    if np.iscomplexobj(intensity):
+        # A complex cross term: integrate real and imaginary parts through the same real filter
+        # (the half-sample centre shift is only Hermitian once the result is taken real).
+        return integrate_pixels(intensity.real, grid, fill_factor) + 1j * integrate_pixels(
+            intensity.imag, grid, fill_factor
+        )
     s = grid.oversample
     ny, nx = intensity.shape[-2:]
     fy = sfft.fftfreq(ny)[:, None]

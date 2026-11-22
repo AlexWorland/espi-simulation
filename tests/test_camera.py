@@ -62,3 +62,13 @@ def test_shot_and_read_noise_statistics():
     adu = expose(np.full((256, 256), 1000.0), cam, stream(0, "c")).astype(float)
     assert adu.mean() == pytest.approx(1000.0, abs=1.0)
     assert adu.var() == pytest.approx(1000.0 + 25.0 + 1 / 12, rel=0.03)
+
+
+def test_complex_integration_is_linear():
+    g = _grid()
+    rng = np.random.default_rng(1)
+    a, b = rng.random(g.shape), rng.random(g.shape)
+    out = integrate_pixels(a + 1j * b, g, fill_factor=0.5)
+    assert np.iscomplexobj(out)
+    expected = integrate_pixels(a, g, 0.5) + 1j * integrate_pixels(b, g, 0.5)
+    np.testing.assert_allclose(out, expected, atol=1e-12)
