@@ -1,6 +1,6 @@
 # Time-Averaged ESPI of a Vibrating Drumhead — Design (M2)
 
-Date: 2026-11-21 · Status: awaiting user approval · Builds on
+Date: 2026-11-21 · Status: implemented (approved 2026-11-21) · Builds on
 [`2026-11-21-espi-simulator-design.md`](2026-11-21-espi-simulator-design.md) (M1)
 
 ## Intent
@@ -178,3 +178,20 @@ fit = analysis.phase_from_steps(video.frames, video.reference_phase)  # fit.modu
   - the short-exposure warning fires;
   - dual-beam and in-plane vibration raise errors;
   - same seed gives the same video, with correct shapes and timestamps.
+
+## Implementation notes
+
+- **Drumhead evaluation** uses cached per-azimuthal-order cubic-spline radial profiles
+  (2049 samples, error about 1e-10), not per-mode Bessel calls at every point. That took
+  the test suite from 95 s to 3.4 s.
+- **Ground-truth check.** The cycle-averaged mean field is the image of `U·J0`, not
+  `J0 × image(U)`. Where the J0 envelope varies over a speckle, the pixelwise modulation
+  ratio deviates from `|J0|` by a zero-mean speckle term: about 0.07 at 96 px over the head,
+  shrinking with resolution. The tests use a local least-squares complex estimator, which
+  recovers the signed J0 to about 0.03.
+- **Pixel integration of complex cross terms** routes the real and imaginary parts through
+  the real filter. With an even oversample, the half-sample centre shift is not Hermitian
+  at Nyquist.
+- **Example** (`examples/drumhead_sweep.py`): 240 frames at 512² in about 4 s. The fitted
+  modulation correlates 0.93–0.95 with `|J0|` truth under shot and read noise. The (2,1)
+  pattern is a real mixed mode, because (0,2) is only 7 % higher in frequency at Q = 50.
