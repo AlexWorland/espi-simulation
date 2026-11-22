@@ -75,7 +75,7 @@ video = espi_sim.Simulator(cfg).acquire_video(
 
 Time averaging uses cycle-averaged fields. The mean field is the image of `U·J0(S·|W|)`,
 exact by Jacobi–Anger. The mean intensity averages over vibration phases, which keeps the
-speckle smearing from the membrane's slope. Both are cached per distinct tone. A stepped sweep costs one state per step; a continuous sweep costs one per frame (about 0.6 s at 512², so the 900-frame sweep above takes about 9 minutes). The model
+speckle smearing from the membrane's slope. Both are cached per distinct tone. A stepped sweep costs one state per step; a continuous sweep costs one per frame (about 0.6 s at 512², so the 900-frame sweep above takes about 9 minutes). Memory is about 9 MB per 512² frame for a continuous sweep (frames, electrons and a truth state per frame). For long recordings, call `acquire_video` in chunks with `frame_offset` and save each chunk: the timeline, reference ramp and noise streams continue seamlessly. The model
 assumes steady state and many cycles per exposure, and warns when a sweep is too fast or an
 exposure too short. Run `uv run python examples/drumhead_sweep.py` to regenerate the figure.
 

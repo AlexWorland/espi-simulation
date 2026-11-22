@@ -132,3 +132,41 @@ def test_video_reproducible_and_frame_offset_continues():
     assert v4.times[0] == pytest.approx(4 / 30)
     np.testing.assert_allclose(v4.reference_phase, v8.reference_phase[4:])
     np.testing.assert_array_equal(v4.frames, v8.frames[4:])
+
+
+def test_fast_reference_ramp_relative_to_vibration_warns():
+    level = DRUM.calibrate(0.3e-6, 400.0)
+    fast = TriangleWave(frequency_hz=8.0, phase_pp=2 * np.pi)  # ~4 % of the vibration rate
+    sim = Simulator(
+        SimConfig(
+            camera=IDEAL,
+            optics=Optics(f_number=8, magnification=MAG),
+            reference_drive=fast,
+            timing=TIMING,
+        )
+    )
+    with pytest.warns(UserWarning, match="reference"):
+        sim.acquire_video(DRUM, Tone(400.0, level), n_frames=2)
+
+
+def test_continuous_sweep_does_not_retain_per_state_terms():
+    import tracemalloc
+
+    drum = Drumhead(q=10)
+    level = drum.calibrate(0.3e-6, 400.0)
+    n_px = 128
+    cam = Camera(shape=(n_px, n_px), shot_noise=False, read_noise=0.0)
+    sim = _sim(camera=cam)
+    sim.acquire_video(drum, Sweep(380.0, 420.0, 2 / 30, level), n_frames=2)  # warm one-time caches
+
+    def peak(n):
+        tracemalloc.start()
+        sim.acquire_video(drum, Sweep(380.0, 420.0, n / 30, level), n_frames=n)
+        p = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        return p
+
+    per_frame = (peak(24) - peak(8)) / 16 / (n_px * n_px)
+    # Outputs need ~34 B/px/frame (electrons, frames, 3 truth maps); retaining each
+    # state's base + cross terms adds ~24 B/px/frame more.
+    assert per_frame < 45

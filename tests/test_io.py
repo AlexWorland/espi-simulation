@@ -72,3 +72,39 @@ def test_video_npz_round_trip(tmp_path):
     espi_sim.save_acquisition(m1, espi_sim.Simulator(cfg).acquire())
     with pytest.raises(ValueError):
         load_video(m1)
+
+
+def test_load_video_memory_is_linear_in_states(tmp_path):
+    import tracemalloc
+
+    from espi_sim.drumhead import MembraneMode
+    from espi_sim.io import load_video, save_video
+    from espi_sim.video import ToneState, VideoAcquisition
+
+    s, shape = 120, (16, 16)
+    z = np.zeros(shape)
+    states = tuple(
+        ToneState(400.0 + i, 1e-8, z + i, z, z + 1, (MembraneMode(0, 1, 2.4, 400.0, 1 + 0j),))
+        for i in range(s)
+    )
+    video = VideoAcquisition(
+        frames=np.zeros((s, *shape), np.uint16),
+        electrons=np.zeros((s, *shape)),
+        times=np.arange(s) / 30,
+        reference_phase=np.zeros(s),
+        reference_visibility=np.ones(s),
+        frequency_hz=400.0 + np.arange(s),
+        level=np.full(s, 1e-8),
+        state_index=np.arange(s),
+        states=states,
+        sensitivity=np.array([0, 0, -1.0]),
+    )
+    path = tmp_path / "many.npz"
+    save_video(path, video)
+    tracemalloc.start()
+    back, _ = load_video(path)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    stack_bytes = s * shape[0] * shape[1] * 8
+    assert peak < 20 * stack_bytes  # quadratic re-reads would need ~3*s stacks
+    assert back.states[-1].amplitude[0, 0] == s - 1

@@ -19,6 +19,10 @@ class Tone:
     frequency_hz: float
     level: float
 
+    def __post_init__(self) -> None:
+        if not self.frequency_hz > 0:
+            raise ValueError("frequency_hz must be positive (use level=0 to switch the drive off)")
+
     def tone_at(self, t: float) -> tuple[float, float]:
         return self.frequency_hz, self.level
 
@@ -36,8 +40,10 @@ class SteppedSweep:
     levels: float | tuple[float, ...]
 
     def __post_init__(self) -> None:
-        if self.dwell_s <= 0 or not self.frequencies_hz:
+        if self.dwell_s <= 0 or len(self.frequencies_hz) == 0:
             raise ValueError("need at least one frequency and a positive dwell")
+        if not all(f > 0 for f in self.frequencies_hz):
+            raise ValueError("frequencies must be positive (use a level of 0 to switch off)")
         if not np.isscalar(self.levels) and len(self.levels) != len(self.frequencies_hz):
             raise ValueError("levels must be a scalar or one per frequency")
 

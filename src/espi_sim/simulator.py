@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import warnings
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cached_property
 
@@ -202,7 +203,7 @@ class Simulator:
         starts = index / timing.frame_rate_hz
         mids = starts + timing.exposure_s / 2
         tones = [tone.tone_at(float(t)) for t in mids]
-        for msg in steady_state_warnings(tone, drum, timing, mids):
+        for msg in steady_state_warnings(tone, drum, timing, mids, c.reference_drive):
             warnings.warn(msg, UserWarning, stacklevel=2)
 
         s_vec = setup.sensitivity(self.wavelength)
@@ -211,13 +212,23 @@ class Simulator:
         ff = c.camera.fill_factor
         px_xi, px_eta = self.grid.pixel_object_coords()
 
+        keys = [(float(f), float(level)) for f, level in tones]
+        uses_left = Counter(keys)
         cache: dict[tuple[float, float], int] = {}
+        terms: dict[tuple[float, float], tuple[NDArray, NDArray]] = {}
         states: list[ToneState] = []
-        terms: list[tuple[NDArray, NDArray]] = []
         state_index = np.empty(n_frames, int)
-        for i, (f, level) in enumerate(tones):
-            key = (float(f), float(level))
+        electrons = np.empty((n_frames, *c.camera.shape))
+        frames = np.empty((n_frames, *c.camera.shape), np.uint16)
+        ref_avg = np.empty(n_frames, complex)
+        opd = setup.beams[0].path_length - setup.reference.path_length
+        drive = c.reference_drive
+
+        # Single pass: build a state's cycle-averaged terms when first needed, render its
+        # frames, and drop the terms after their last use so long sweeps stay O(frames).
+        for i, (key, k, t0) in enumerate(zip(keys, index, starts, strict=True)):
             if key not in cache:
+                f, level = key
                 b = s_vec[2] * drum.complex_amplitude(self._xi, self._eta, f, level)
                 gy, gx = np.gradient(b)
                 if np.sqrt(np.abs(gx) ** 2 + np.abs(gy) ** 2).max() > np.pi / 2:
@@ -228,44 +239,44 @@ class Simulator:
                         stacklevel=2,
                     )
                 mean_field, mean_intensity = cycle_averaged_fields(u, b, self.pupil)
-                base = integrate_pixels(mean_intensity + np.abs(e_r) ** 2, self.grid, ff)
-                cross = integrate_pixels(mean_field * np.conj(e_r), self.grid, ff)
+                terms[key] = (
+                    integrate_pixels(mean_intensity + np.abs(e_r) ** 2, self.grid, ff),
+                    integrate_pixels(mean_field * np.conj(e_r), self.grid, ff),
+                )
+                del b, gy, gx, mean_field, mean_intensity
                 w_px = drum.complex_amplitude(px_xi, px_eta, f, level)
                 states.append(
                     ToneState(
-                        frequency_hz=key[0],
-                        level=key[1],
+                        frequency_hz=f,
+                        level=level,
                         amplitude=np.abs(w_px),
                         phase=np.angle(w_px),
                         modulation=j0(s_vec[2] * np.abs(w_px)),
                         modes=drum.modes(f),
                     )
                 )
-                terms.append((base, cross))
                 cache[key] = len(states) - 1
             state_index[i] = cache[key]
 
-        opd = setup.beams[0].path_length - setup.reference.path_length
-        drive = c.reference_drive
-        electrons, frames, ref_avg = [], [], []
-        for i, (k, t0) in enumerate(zip(index, starts, strict=True)):
             k = int(k)
             avg = exposure_average(drive.phase_at, t0, t0 + timing.exposure_s) if drive else 1 + 0j
-            base, cross = terms[state_index[i]]
+            base, cross = terms[key]
             gamma = c.laser.coherence(opd, frame=k)
             e = base + 2.0 * np.real(cross * (gamma * np.conj(avg)))
             if c.laser.relative_intensity_noise:
                 e = e * (
                     1.0 + c.laser.relative_intensity_noise * stream(c.seed, "laser", k).normal()
                 )
-            electrons.append(e)
-            frames.append(expose(e, c.camera, stream(c.seed, "camera", k)))
-            ref_avg.append(avg)
+            electrons[i] = e
+            frames[i] = expose(e, c.camera, stream(c.seed, "camera", k))
+            ref_avg[i] = avg
+            uses_left[key] -= 1
+            if uses_left[key] == 0:
+                del terms[key]
 
-        ref_avg = np.asarray(ref_avg)
         return VideoAcquisition(
-            frames=np.stack(frames),
-            electrons=np.stack(electrons),
+            frames=frames,
+            electrons=electrons,
             times=starts,
             reference_phase=np.angle(ref_avg),
             reference_visibility=np.abs(ref_avg),

@@ -8,11 +8,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .drumhead import Drumhead, MembraneMode
-from .waveforms import SteppedSweep, VideoTiming
+from .waveforms import SteppedSweep, TriangleWave, VideoTiming
 
 MIN_CYCLES_PER_EXPOSURE = 10.0
 SWEEP_SAFETY = 0.25
 RING_UP_DWELLS = 5.0
+MAX_REFERENCE_RATE_RATIO = 0.02  # |d delta/dt| / (2 pi f) ~ relative modulation error
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,11 @@ class VideoAcquisition:
 
 
 def steady_state_warnings(
-    tone, drum: Drumhead, timing: VideoTiming, mid_times: NDArray[np.float64]
+    tone,
+    drum: Drumhead,
+    timing: VideoTiming,
+    mid_times: NDArray[np.float64],
+    reference_drive: TriangleWave | None = None,
 ) -> list[str]:
     """Reasons the steady-state, many-cycles-per-exposure model may not hold."""
     msgs: list[str] = []
@@ -80,6 +85,19 @@ def steady_state_warnings(
             msgs.append(
                 f"dwell {tone.dwell_s:.3g} s is under {RING_UP_DWELLS:g} ring-up times "
                 f"({ring_up:.3g} s); the steady-state response is assumed immediately"
+            )
+    if reference_drive is not None:
+        # Cycle and exposure averages separate only if delta barely moves within one vibration
+        # cycle; the modulation error grows roughly like |d delta/dt| / (2 pi f).
+        peak = abs(reference_drive.offset) + abs(reference_drive.phase_pp)
+        rate = 2 * abs(reference_drive.phase_pp) * reference_drive.frequency_hz
+        rate *= 1 + 2 * abs(reference_drive.nonlinearity) * peak
+        ratio = rate / (2 * np.pi * f_min)
+        if ratio > MAX_REFERENCE_RATE_RATIO:
+            msgs.append(
+                f"reference piezo moves {ratio:.3f} rad per vibration radian "
+                f"(> {MAX_REFERENCE_RATE_RATIO:g}); the slow-reference separation adds about "
+                f"{100 * ratio:.0f} % modulation error"
             )
     cycles = f_min * timing.exposure_s
     if cycles < MIN_CYCLES_PER_EXPOSURE:

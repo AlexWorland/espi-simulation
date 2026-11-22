@@ -128,7 +128,7 @@ class Drumhead:
         return peak_amplitude / peak
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=4)  # reuse is back-to-back (sim grid, then pixel centres) per tone
 def _radial_profiles(drum: Drumhead, frequency_hz: float) -> dict[int, CubicSpline]:
     """Per azimuthal order m, a spline of ``R_m(rho) = sum_n a_mn J_m(alpha_mn rho)``.
 

@@ -55,3 +55,11 @@ def test_video_timing():
         VideoTiming(frame_rate_hz=30.0, exposure_s=0.05)
     with pytest.raises(ValueError):
         VideoTiming(frame_rate_hz=0.0, exposure_s=0.01)
+
+
+@pytest.mark.parametrize("bad", [0.0, -5.0])
+def test_tone_and_stepped_sweep_reject_non_positive_frequency(bad):
+    with pytest.raises(ValueError):
+        Tone(frequency_hz=bad, level=1.0)
+    with pytest.raises(ValueError):
+        SteppedSweep(frequencies_hz=(bad, 400.0), dwell_s=1.0, levels=1.0)

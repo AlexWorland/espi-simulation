@@ -109,19 +109,22 @@ def load_video(path: str | PathLike) -> tuple[VideoAcquisition, dict | None]:
         meta = json.loads(str(z["meta_json"]))
         if meta.get("format") != _VIDEO_FORMAT:
             raise ValueError(f"{path} is not an {_VIDEO_FORMAT} file")
+        # Each z[...] access decompresses the whole array, so read every stack exactly once.
+        freq, level = z["state_frequency_hz"], z["state_level"]
+        amp, phase, mod = z["state_amplitude"], z["state_phase"], z["state_modulation"]
         states = tuple(
             ToneState(
-                frequency_hz=float(z["state_frequency_hz"][i]),
-                level=float(z["state_level"][i]),
-                amplitude=z["state_amplitude"][i],
-                phase=z["state_phase"][i],
-                modulation=z["state_modulation"][i],
+                frequency_hz=float(freq[i]),
+                level=float(level[i]),
+                amplitude=amp[i],
+                phase=phase[i],
+                modulation=mod[i],
                 modes=tuple(
                     MembraneMode(int(m), int(n), a, f, complex(re, im))
                     for m, n, a, f, re, im in meta["modes"][i]
                 ),
             )
-            for i in range(len(z["state_frequency_hz"]))
+            for i in range(len(freq))
         )
         video = VideoAcquisition(
             frames=z["frames"],
