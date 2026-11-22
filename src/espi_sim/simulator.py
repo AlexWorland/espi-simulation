@@ -11,17 +11,22 @@ includes HeNe mode-sweep drift), and ``delta`` is the actual PZT step applied to
 
 from __future__ import annotations
 
+import dataclasses
+import warnings
 from dataclasses import dataclass, field
 from functools import cached_property
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.special import j0
 
 from .camera import expose, integrate_pixels
 from .config import SimConfig
 from .displacement import DisplacementField, Zero
 from .optics import circular_pupil, image_field, make_grid, rough_surface, warp
 from .rng import stream
+from .time_average import cycle_averaged_fields, exposure_average
+from .video import ToneState, VideoAcquisition, steady_state_warnings
 
 
 @dataclass(frozen=True)
@@ -175,3 +180,105 @@ class Simulator:
         before = self.acquire(Zero(), frame_offset=0, label="before")
         after = self.acquire(displacement, frame_offset=n, label="after")
         return before, after
+
+    # -- time-averaged video ---------------------------------------------------------------
+
+    def acquire_video(self, drum, tone, n_frames: int, frame_offset: int = 0) -> VideoAcquisition:
+        """Time-averaged video of a tone-driven drumhead with a slowly moving reference piezo.
+
+        ``drum`` is a :class:`espi_sim.drumhead.Drumhead`. ``tone`` is a schedule from
+        :mod:`espi_sim.waveforms` (``Tone``, ``SteppedSweep`` or ``Sweep``). Frame ``k``
+        exposes over ``[(frame_offset + k)/fps, ... + exposure]`` and uses the tone at its
+        mid-exposure. Cycle averages are computed once per distinct ``(frequency, level)``.
+        """
+        c = self.config
+        setup = c.setup
+        if setup.reference is None:
+            raise ValueError("time-averaged video needs a reference-beam (out-of-plane) setup")
+        if n_frames < 1:
+            raise ValueError("n_frames must be at least 1")
+        timing = c.timing
+        index = frame_offset + np.arange(n_frames)
+        starts = index / timing.frame_rate_hz
+        mids = starts + timing.exposure_s / 2
+        tones = [tone.tone_at(float(t)) for t in mids]
+        for msg in steady_state_warnings(tone, drum, timing, mids):
+            warnings.warn(msg, UserWarning, stacklevel=2)
+
+        s_vec = setup.sensitivity(self.wavelength)
+        e_r = self._reference_field
+        u = np.sqrt(setup.beams[0].mean_electrons / self._pupil_fraction) * self._surface(0)
+        ff = c.camera.fill_factor
+        px_xi, px_eta = self.grid.pixel_object_coords()
+
+        cache: dict[tuple[float, float], int] = {}
+        states: list[ToneState] = []
+        terms: list[tuple[NDArray, NDArray]] = []
+        state_index = np.empty(n_frames, int)
+        for i, (f, level) in enumerate(tones):
+            key = (float(f), float(level))
+            if key not in cache:
+                b = s_vec[2] * drum.complex_amplitude(self._xi, self._eta, f, level)
+                gy, gx = np.gradient(b)
+                if np.sqrt(np.abs(gx) ** 2 + np.abs(gy) ** 2).max() > np.pi / 2:
+                    warnings.warn(
+                        "vibration phase is under-sampled (> pi/2 rad per simulation sample); "
+                        "reduce the amplitude or raise magnification/oversample",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                mean_field, mean_intensity = cycle_averaged_fields(u, b, self.pupil)
+                base = integrate_pixels(mean_intensity + np.abs(e_r) ** 2, self.grid, ff)
+                cross = integrate_pixels(mean_field * np.conj(e_r), self.grid, ff)
+                w_px = drum.complex_amplitude(px_xi, px_eta, f, level)
+                states.append(
+                    ToneState(
+                        frequency_hz=key[0],
+                        level=key[1],
+                        amplitude=np.abs(w_px),
+                        phase=np.angle(w_px),
+                        modulation=j0(s_vec[2] * np.abs(w_px)),
+                        modes=drum.modes(f),
+                    )
+                )
+                terms.append((base, cross))
+                cache[key] = len(states) - 1
+            state_index[i] = cache[key]
+
+        opd = setup.beams[0].path_length - setup.reference.path_length
+        drive = c.reference_drive
+        electrons, frames, ref_avg = [], [], []
+        for i, (k, t0) in enumerate(zip(index, starts, strict=True)):
+            k = int(k)
+            avg = exposure_average(drive.phase_at, t0, t0 + timing.exposure_s) if drive else 1 + 0j
+            base, cross = terms[state_index[i]]
+            gamma = c.laser.coherence(opd, frame=k)
+            e = base + 2.0 * np.real(cross * (gamma * np.conj(avg)))
+            if c.laser.relative_intensity_noise:
+                e = e * (
+                    1.0 + c.laser.relative_intensity_noise * stream(c.seed, "laser", k).normal()
+                )
+            electrons.append(e)
+            frames.append(expose(e, c.camera, stream(c.seed, "camera", k)))
+            ref_avg.append(avg)
+
+        ref_avg = np.asarray(ref_avg)
+        return VideoAcquisition(
+            frames=np.stack(frames),
+            electrons=np.stack(electrons),
+            times=starts,
+            reference_phase=np.angle(ref_avg),
+            reference_visibility=np.abs(ref_avg),
+            frequency_hz=np.array([f for f, _ in tones], float),
+            level=np.array([lv for _, lv in tones], float),
+            state_index=state_index,
+            states=tuple(states),
+            sensitivity=s_vec,
+            frame_offset=frame_offset,
+            metadata={
+                "drumhead": dataclasses.asdict(drum),
+                "tone": {"type": type(tone).__name__, **dataclasses.asdict(tone)},
+                "oversample": self.grid.oversample,
+                "margin": self.grid.margin,
+            },
+        )
