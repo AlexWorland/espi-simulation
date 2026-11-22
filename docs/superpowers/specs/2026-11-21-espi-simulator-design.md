@@ -117,6 +117,19 @@ Physics invariants against analytic theory:
 Default parameter values (documented in code), numerical tolerances, file formats beyond
 `.npz`.
 
+## Implementation notes (M1)
+
+- **Strain decorrelation is real and intended.** Under ±45° dual-beam illumination, a
+  thermal strain of 4.6e-4 shifts each beam's spectrum by about 5.7 % of the pupil radius.
+  The measured per-beam correlation (0.965) matches the pupil-overlap prediction (0.964),
+  and the resulting phase noise (median about 0.24 rad) is unbiased. Tests encode the law
+  itself rather than an arbitrary accuracy threshold.
+- The spline microstructure warp is exact for integer shifts and accurate to about 1–2 %
+  inside the pupil band for fractional shifts.
+- Calls: camera defaults (3.45 µm pitch, 10.5 ke⁻ full well, 2.5 e⁻ read noise, 12-bit);
+  beam defaults of 2500 e⁻ each (reference at about ¼ of saturation); auto margin of about
+  4 speckle sizes, grown to an FFT-friendly size; image taken as erect (no inversion).
+
 ## Later milestones
 
 Diverging illumination and spatially varying sensitivity; Gaussian beam profile;
