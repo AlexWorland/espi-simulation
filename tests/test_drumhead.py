@@ -97,3 +97,36 @@ def test_invalid_parameters_raise():
         Drumhead(f01=-1.0)
     with pytest.raises(ValueError):
         Drumhead().modes(0.0)
+
+
+def _direct_sum(drum, xi, eta, f, level):
+    from scipy.special import jv
+
+    r, t = np.hypot(xi, eta), np.arctan2(eta, xi)
+    th_d = np.radians(drum.drive.theta_deg)
+    w = sum(
+        md.amplitude * jv(md.m, md.alpha * r / drum.radius) * np.cos(md.m * (t - th_d))
+        for md in drum.modes(f)
+    )
+    return np.where(r < drum.radius, level * w, 0)
+
+
+def test_fast_evaluation_matches_direct_bessel_sum():
+    d = Drumhead()
+    rng = np.random.default_rng(4)
+    xi, eta = rng.uniform(-0.1, 0.1, (2, 2000))
+    for f in (d.f01, 1.7 * d.f01, 3.1 * d.f01):
+        ref = _direct_sum(d, xi, eta, f, 1.0)
+        got = d.complex_amplitude(xi, eta, f, 1.0)
+        assert np.abs(got - ref).max() < 1e-6 * np.abs(ref).max()
+
+
+def test_calibrate_and_grid_evaluation_are_fast():
+    import time
+
+    d = Drumhead()
+    t = time.perf_counter()
+    d.calibrate(0.5e-6, at_hz=d.f01)
+    x = np.linspace(-0.11, 0.11, 1024)
+    d.complex_amplitude(*np.meshgrid(x, x), d.f01, 1.0)
+    assert time.perf_counter() - t < 1.0

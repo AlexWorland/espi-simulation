@@ -16,12 +16,15 @@ a desired peak amplitude at one frequency into a level.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.interpolate import CubicSpline
 from scipy.special import jn_zeros, jv
 
 _MODE_THRESHOLD = 1e-4  # keep modes with |a| >= this fraction of the largest
+_RADIAL_SAMPLES = 2049  # 1-D radial grid for R_m(rho); cubic-spline error ~1e-10
 
 
 @dataclass(frozen=True)
@@ -106,13 +109,11 @@ class Drumhead:
         w = np.zeros(np.broadcast(x, y).shape, complex)
         if level == 0 or not inside.any():
             return w
-        rr, tt = r[inside], theta[inside]
+        rr, tt = r[inside] / self.radius, theta[inside]
         acc = np.zeros(rr.shape, complex)
-        for md in self.modes(frequency_hz):
-            shape = jv(md.m, md.alpha * rr / self.radius)
-            if md.m:
-                shape = shape * np.cos(md.m * (tt - self._theta_d))
-            acc += md.amplitude * shape
+        for m, spline in _radial_profiles(self, float(frequency_hz)).items():
+            radial = spline(rr)
+            acc += radial if m == 0 else radial * np.cos(m * (tt - self._theta_d))
         w[inside] = level * acc
         return w
 
@@ -125,3 +126,18 @@ class Drumhead:
         eta = self.center[1] + rr * np.sin(tt)
         peak = np.abs(self.complex_amplitude(xi, eta, at_hz, 1.0)).max()
         return peak_amplitude / peak
+
+
+@lru_cache(maxsize=32)
+def _radial_profiles(drum: Drumhead, frequency_hz: float) -> dict[int, CubicSpline]:
+    """Per azimuthal order m, a spline of ``R_m(rho) = sum_n a_mn J_m(alpha_mn rho)``.
+
+    Evaluating the Bessel sums once on a fine 1-D grid, then interpolating, is far cheaper than
+    calling ``jv`` per mode at every 2-D point. Cached per (drumhead, frequency).
+    """
+    rho = np.linspace(0.0, 1.0, _RADIAL_SAMPLES)
+    sums: dict[int, NDArray[np.complex128]] = {}
+    for md in drum.modes(frequency_hz):
+        prof = sums.setdefault(md.m, np.zeros(rho.size, complex))
+        prof += md.amplitude * jv(md.m, md.alpha * rho)
+    return {m: CubicSpline(rho, prof) for m, prof in sums.items()}
