@@ -37,7 +37,9 @@ def test_pixel_aperture_mtf_and_centre_sampling(ff):
     out = integrate_pixels(intensity, g, fill_factor=ff)
     k = np.arange(32)
     centre = g.margin[1] * s + k * s + (s - 1) / 2
-    expected = ff * (1 + 0.5 * np.sinc(np.sqrt(ff) * f_px) * np.cos(2 * np.pi * (f_px / s) * centre))
+    expected = ff * (
+        1 + 0.5 * np.sinc(np.sqrt(ff) * f_px) * np.cos(2 * np.pi * (f_px / s) * centre)
+    )
     np.testing.assert_allclose(out[0], expected, atol=1e-9)
 
 

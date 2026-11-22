@@ -143,7 +143,10 @@ class ClampedPlatePointLoad(_ClampedPlate):
 
 @dataclass(frozen=True)
 class UniformStrain(DisplacementField):
-    """Homogeneous in-plane strain about ``center``: ``u = exx x + exy y``, ``v = exy x + eyy y``."""
+    """Homogeneous in-plane strain about ``center``.
+
+    ``u = exx x + exy y``, ``v = exy x + eyy y``.
+    """
 
     exx: float = 0.0
     eyy: float = 0.0
@@ -158,6 +161,4 @@ class UniformStrain(DisplacementField):
 
     def evaluate(self, xi, eta):
         x, y = xi - self.center[0], eta - self.center[1]
-        return Displacement(
-            self.exx * x + self.exy * y, self.exy * x + self.eyy * y, _zeros(xi)
-        )
+        return Displacement(self.exx * x + self.exy * y, self.exy * x + self.eyy * y, _zeros(xi))

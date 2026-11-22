@@ -30,9 +30,7 @@ def integrate_pixels(
     fx = sfft.fftfreq(nx)[None, :]
     width = np.sqrt(fill_factor) * s  # active aperture side, in samples
     centre = (s - 1) / 2  # pixel-centre offset from the pixel's first sample
-    transfer = (
-        np.sinc(width * fy) * np.sinc(width * fx) * np.exp(2j * np.pi * centre * (fx + fy))
-    )
+    transfer = np.sinc(width * fy) * np.sinc(width * fx) * np.exp(2j * np.pi * centre * (fx + fy))
     filtered = sfft.ifft2(sfft.fft2(intensity, workers=-1) * transfer, workers=-1).real
     return fill_factor * grid.crop(filtered)[..., ::s, ::s]
 

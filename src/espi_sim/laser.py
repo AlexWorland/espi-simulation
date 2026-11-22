@@ -69,7 +69,9 @@ class Laser:
         spacing = self.mode_spacing_hz
         offset = self.comb_offset_hz + self.sweep_hz_per_frame * frame
         reach = 3.0 * self.gain_fwhm_hz
-        m = np.arange(np.floor((-reach - offset) / spacing), np.ceil((reach - offset) / spacing) + 1)
+        m = np.arange(
+            np.floor((-reach - offset) / spacing), np.ceil((reach - offset) / spacing) + 1
+        )
         nu = offset + m * spacing
         gain = np.exp(-4.0 * np.log(2.0) * (nu / self.gain_fwhm_hz) ** 2)
         excess = np.clip(gain - self.gain_threshold, 0.0, None)
