@@ -3,7 +3,7 @@
 from . import analysis, displacement
 from .config import Camera, ObjectBeam, Optics, PhaseShifter, ReferenceBeam, Setup, SimConfig
 from .drumhead import Drumhead, PointDrive, UniformPressure
-from .io import load_acquisition, save_acquisition
+from .io import load_acquisition, load_video, save_acquisition, save_video
 from .laser import Laser
 from .simulator import Acquisition, GroundTruth, Simulator
 from .video import ToneState, VideoAcquisition
@@ -34,5 +34,7 @@ __all__ = [
     "analysis",
     "displacement",
     "load_acquisition",
+    "load_video",
     "save_acquisition",
+    "save_video",
 ]
